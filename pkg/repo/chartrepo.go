@@ -115,25 +115,63 @@ func (r *ChartRepository) Load() error {
 
 // DownloadIndexFile fetches the index from a repository.
 func (r *ChartRepository) DownloadIndexFile() (string, error) {
-	indexURL, err := ResolveReferenceURL(r.Config.URL, "index.yaml")
+	jsonIndexURL, err := ResolveReferenceURL(r.Config.URL, "index.json")
 	if err != nil {
 		return "", err
 	}
 
-	resp, err := r.Client.Get(indexURL,
-		getter.WithURL(r.Config.URL),
-		getter.WithInsecureSkipVerifyTLS(r.Config.InsecureSkipTLSverify),
-		getter.WithTLSClientConfig(r.Config.CertFile, r.Config.KeyFile, r.Config.CAFile),
-		getter.WithBasicAuth(r.Config.Username, r.Config.Password),
-		getter.WithPassCredentialsAll(r.Config.PassCredentialsAll),
+	yamlIndexURL, err := ResolveReferenceURL(r.Config.URL, "index.yaml")
+	if err != nil {
+		return "", err
+	}
+
+	var (
+		urls    = []string{jsonIndexURL, yamlIndexURL}
+		getOpts = []getter.Option{
+			getter.WithURL(r.Config.URL),
+			getter.WithInsecureSkipVerifyTLS(r.Config.InsecureSkipTLSverify),
+			getter.WithTLSClientConfig(r.Config.CertFile, r.Config.KeyFile, r.Config.CAFile),
+			getter.WithBasicAuth(r.Config.Username, r.Config.Password),
+			getter.WithPassCredentialsAll(r.Config.PassCredentialsAll),
+		}
+
+		index []byte
+		errs  []error
 	)
-	if err != nil {
-		return "", err
+
+	// Try to download the index file from both the JSON and YAML URLs.
+	// If both fail, return an error.
+	for _, u := range urls {
+		resp, err := r.Client.Get(u, getOpts...)
+		if err != nil {
+			// If we get an error, add it to the list of errors and
+			// continue to the next URL.
+			errs = append(errs, err)
+			continue
+		}
+
+		index, err = io.ReadAll(resp)
+		if err != nil {
+			// This should at no point happen, but if it does, we
+			// should fail hard as it means there is something
+			// seriously wrong with the application.
+			return "", err
+		}
+
+		// If we get here, we have a successful HTTP request and a
+		// successful read of the body. Abort the loop and continue
+		// loading the index.
+		break
 	}
 
-	index, err := io.ReadAll(resp)
-	if err != nil {
-		return "", err
+	// If we have errors, and the number of errors is equal to the number
+	// of URLs, then we failed to download the index from any of the URLs.
+	if errCount := len(errs); errCount != 0 && errCount >= len(urls) {
+		es := make([]string, 0, errCount)
+		for _, e := range errs {
+			es = append(es, e.Error())
+		}
+		return "", fmt.Errorf(strings.Join(es, "; "))
 	}
 
 	indexFile, err := loadIndex(index, r.Config.URL)
