@@ -40,9 +40,10 @@ into the existing index, with local charts taking priority over existing charts.
 `
 
 type repoIndexOptions struct {
-	dir   string
-	url   string
-	merge string
+	dir    string
+	url    string
+	merge  string
+	format string
 }
 
 func newRepoIndexCmd(out io.Writer) *cobra.Command {
@@ -70,6 +71,7 @@ func newRepoIndexCmd(out io.Writer) *cobra.Command {
 	f := cmd.Flags()
 	f.StringVar(&o.url, "url", "", "url of chart repository")
 	f.StringVar(&o.merge, "merge", "", "merge the generated index into the given index")
+	f.StringVar(&o.format, "format", "", "must be \"yaml\" or \"json\", defaults to yaml")
 
 	return cmd
 }
@@ -80,22 +82,22 @@ func (i *repoIndexOptions) run(out io.Writer) error {
 		return err
 	}
 
-	return index(path, i.url, i.merge)
+	return index(path, i.url, i.merge, i.format)
 }
 
-func index(dir, url, mergeTo string) error {
-	out := filepath.Join(dir, "index.yaml")
+func index(dir, url, mergeTo, format string) error {
+	out := filepath.Join(dir, indexNameForFormat(format))
 
 	i, err := repo.IndexDirectory(dir, url)
 	if err != nil {
 		return err
 	}
 	if mergeTo != "" {
-		// if index.yaml is missing then create an empty one to merge into
+		// If the index is missing, then create an empty one to merge into
 		var i2 *repo.IndexFile
 		if _, err := os.Stat(mergeTo); os.IsNotExist(err) {
 			i2 = repo.NewIndexFile()
-			i2.WriteFile(mergeTo, 0644)
+			writeIndexInFormat(i2, format, mergeTo)
 		} else {
 			i2, err = repo.LoadIndexFile(mergeTo)
 			if err != nil {
@@ -105,5 +107,27 @@ func index(dir, url, mergeTo string) error {
 		i.Merge(i2)
 	}
 	i.SortEntries()
-	return i.WriteFile(out, 0644)
+	return writeIndexInFormat(i, format, out)
+}
+
+func indexNameForFormat(format string) string {
+	switch format {
+	case "", "yaml":
+		return "index.yaml"
+	case "json":
+		return "index.json"
+	default:
+		return ""
+	}
+}
+
+func writeIndexInFormat(i *repo.IndexFile, format, out string) error {
+	switch {
+	case format == "", format == "yaml":
+		return i.WriteFile(out, 0644)
+	case format == "json":
+		return i.WriteJSONFile(out, 0644)
+	default:
+		return errors.Errorf("unknown format %q", format)
+	}
 }

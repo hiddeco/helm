@@ -68,6 +68,33 @@ func TestRepoIndexCmd(t *testing.T) {
 		t.Errorf("expected %q, got %q", expectedVersion, vs[0].Version)
 	}
 
+	// Test with `--format=json`
+	destJSONIndex := filepath.Join(dir, "index.json")
+
+	c.ParseFlags([]string{"--format", "json"})
+	if err := c.RunE(c, []string{dir}); err != nil {
+		t.Error(err)
+	}
+
+	index2, err := repo.LoadIndexFile(destJSONIndex)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(index2.Entries) != 1 {
+		t.Errorf("expected 1 entry, got %d: %#v", len(index.Entries), index.Entries)
+	}
+
+	vs = index2.Entries["compressedchart"]
+	if len(vs) != 2 {
+		t.Errorf("expected 2 versions, got %d: %#v", len(vs), vs)
+	}
+
+	expectedVersion = "0.2.0"
+	if vs[0].Version != expectedVersion {
+		t.Errorf("expected %q, got %q", expectedVersion, vs[0].Version)
+	}
+
 	// Test with `--merge`
 
 	// Remove first two charts.
@@ -85,7 +112,7 @@ func TestRepoIndexCmd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	c.ParseFlags([]string{"--merge", destIndex})
+	c.ParseFlags([]string{"--merge", destIndex, "--format", "yaml"})
 	if err := c.RunE(c, []string{dir}); err != nil {
 		t.Error(err)
 	}

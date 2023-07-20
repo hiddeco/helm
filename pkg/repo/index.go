@@ -233,6 +233,18 @@ func (i IndexFile) WriteFile(dest string, mode os.FileMode) error {
 	return fileutil.AtomicWriteFile(dest, bytes.NewReader(b), mode)
 }
 
+// WriteJSONFile writes an index file to the given destination path
+// in JSON format.
+//
+// The mode on the file is set to 'mode'
+func (i IndexFile) WriteJSONFile(dest string, mode os.FileMode) error {
+	b, err := json.MarshalIndent(i, "", "  ")
+	if err != nil {
+		return err
+	}
+	return fileutil.AtomicWriteFile(dest, bytes.NewReader(b), mode)
+}
+
 // Merge merges the given index file into this index.
 //
 // This merges by name and version.
